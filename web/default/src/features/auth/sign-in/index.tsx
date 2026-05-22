@@ -30,6 +30,12 @@ export function SignIn() {
   const { redirect } = useSearch({ from: '/(auth)/sign-in' })
   const { status } = useStatus()
   const { systemName } = useSystemConfig()
+  const registerEnabled =
+    status?.register_enabled ??
+    status?.data?.register_enabled ??
+    true
+  const showSignUpLink =
+    !status?.self_use_mode_enabled && registerEnabled
 
   return (
     <AuthLayout>
@@ -40,7 +46,7 @@ export function SignIn() {
               brand: systemName.trim() || DEFAULT_SYSTEM_NAME,
             })}
           </h2>
-          {!status?.self_use_mode_enabled && (
+          {showSignUpLink && (
             <p className='text-sm text-gray-500 sm:text-base dark:text-muted-foreground'>
               {t("Don't have an account?")}{' '}
               <Link

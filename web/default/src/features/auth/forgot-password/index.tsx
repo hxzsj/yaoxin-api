@@ -18,11 +18,19 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { Link } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
+import { useStatus } from '@/hooks/use-status'
 import { AuthLayout } from '../auth-layout'
 import { ForgotPasswordForm } from './components/forgot-password-form'
 
 export function ForgotPassword() {
   const { t } = useTranslation()
+  const { status } = useStatus()
+  const registerEnabled =
+    status?.register_enabled ??
+    status?.data?.register_enabled ??
+    true
+  const showSignUpLink =
+    !status?.self_use_mode_enabled && registerEnabled
 
   return (
     <AuthLayout>
@@ -36,15 +44,17 @@ export function ForgotPassword() {
               'Enter your registered email and we will send you a link to reset your password.'
             )}
           </p>
-          <p className='text-sm text-gray-500 sm:text-base dark:text-muted-foreground'>
-            {t("Don't have an account?")}{' '}
-            <Link
-              to='/sign-up'
-              className='font-medium text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300'
-            >
-              {t('Sign up')}
-            </Link>
-          </p>
+          {showSignUpLink && (
+            <p className='text-sm text-gray-500 sm:text-base dark:text-muted-foreground'>
+              {t("Don't have an account?")}{' '}
+              <Link
+                to='/sign-up'
+                className='font-medium text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300'
+              >
+                {t('Sign up')}
+              </Link>
+            </p>
+          )}
         </div>
 
         <ForgotPasswordForm className='space-y-0' />
