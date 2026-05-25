@@ -17,15 +17,22 @@ version: '3.4' # For compatibility with older Docker versions
 services:
   new-api:
     # image: calciumion/new-api:latest
-    image: yaoxin-api:local
+    # image: yaoxin-api:local
+    image: ${image}
     container_name: new-api
     restart: always
     command: --log-dir /app/logs
     ports:
       - "3000:3000"
     volumes:
-      - ./data:/data
-      - ./logs:/app/logs
+      # - ./data:/data
+      # - ./logs:/app/logs
+
+      # 新改动开始
+      - /data/new-api/data:/data
+      - /data/new-api/logs:/app/logs
+      # 新改动结束
+
     environment:
       - SQL_DSN=postgresql://root:123456@postgres:5432/new-api # ⚠️ IMPORTANT: Change the password in production!
 #      - SQL_DSN=root:123456@tcp(mysql:3306)/new-api  # Point to the mysql service, uncomment if using MySQL
@@ -34,7 +41,13 @@ services:
       - ERROR_LOG_ENABLED=true # 是否启用错误日志记录 (Whether to enable error log recording)
       - BATCH_UPDATE_ENABLED=true  # 是否启用批量更新 (Whether to enable batch update)
       - NODE_NAME=new-api-node-1  # 节点名称，用于审计日志中标识节点身份；多节点/容器部署时建议设置 (Node name used in audit logs; recommended when running multiple instances or in containers)
-#      - STREAMING_TIMEOUT=300  # 流模式无响应超时时间，单位秒，默认120秒，如果出现空补全可以尝试改为更大值 （Streaming timeout in seconds, default is 120s. Increase if experiencing empty completions）
+      # 新改动开始
+      - STREAMING_TIMEOUT=660  # 流模式无响应超时时间，单位秒，默认120秒，如果出现空补全可以尝试改为更大值 （Streaming timeout in seconds, default is 120s. Increase if experiencing empty completions）
+      - GLOBAL_API_TIMEOUT=660
+      - RELAY_TIMEOUT=6000
+      - GLOBAL_WEB_RATE_LIMIT_ENABLE=false
+      - USER_CONTENT_REOUEST_TIMEOUT=1200
+      # 新改动结束
 #      - SESSION_SECRET=random_string  # 多机部署时设置，必须修改这个随机字符串！！ （multi-node deployment, set this to a random string!!!!!!!）
 #      - SYNC_FREQUENCY=60  # Uncomment if regular database syncing is needed
 #      - GOOGLE_ANALYTICS_ID=G-XXXXXXXXXX  # Google Analytics 的测量 ID (Google Analytics Measurement ID)
@@ -70,7 +83,12 @@ services:
       POSTGRES_PASSWORD: 123456  # ⚠️ IMPORTANT: Change this password in production!
       POSTGRES_DB: new-api
     volumes:
-      - pg_data:/var/lib/postgresql/data
+      # - pg_data:/var/lib/postgresql/data
+      
+      # 新改动开始
+      - /data/new-api/pg_data:/var/lib/postgresql/data
+      # 新改动结束
+      
     networks:
       - new-api-network
 #    ports:
