@@ -178,4 +178,41 @@ func initConstantEnv() {
 		}
 	}
 	constant.TrustedRedirectDomains = trustedDomains
+
+	// Initialize CORS allowed origins whitelist (comma-separated)
+	allowedOriginsStr := GetEnvOrDefaultString("ALLOWED_ORIGINS", "")
+	if allowedOriginsStr != "" {
+		var origins []string
+		for _, origin := range strings.Split(allowedOriginsStr, ",") {
+			trimmedOrigin := strings.TrimSpace(origin)
+			if trimmedOrigin != "" {
+				origins = append(origins, trimmedOrigin)
+			}
+		}
+		if len(origins) > 0 {
+			AllowedWebOrigins = origins
+			log.Println("[security] CORS whitelist loaded with origins:", strings.Join(origins, ", "))
+		}
+	} else {
+		log.Println("[security] WARNING: ALLOWED_ORIGINS not set, CORS will allow all origins (insecure). Please configure for production.")
+	}
+
+	// Initialize Session Cookie Secure flag
+	sessionSecureStr := GetEnvOrDefaultString("SESSION_SECURE", "auto")
+	switch sessionSecureStr {
+	case "true":
+		SessionSecure = true
+		log.Println("[security] SESSION_SECURE=true: Cookie Secure flag forced ON")
+	case "false":
+		SessionSecure = false
+		log.Println("[security] SESSION_SECURE=false: Cookie Secure flag forced OFF")
+	default: // "auto" or any other value
+		if os.Getenv("GIN_MODE") == "release" || os.Getenv("GIN_MODE") == "" {
+			SessionSecure = true
+			log.Println("[security] SESSION_SECURE=auto (release mode): Cookie Secure flag ON")
+		} else {
+			SessionSecure = false
+			log.Println("[security] SESSION_SECURE=auto (debug mode): Cookie Secure flag OFF")
+		}
+	}
 }

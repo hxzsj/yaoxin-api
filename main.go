@@ -161,10 +161,18 @@ func main() {
 	// Initialize HTTP server
 	server := gin.New()
 	server.Use(gin.CustomRecovery(func(c *gin.Context, err any) {
+		// 始终记录完整 panic 信息到服务端日志（含堆栈）
 		common.SysLog(fmt.Sprintf("panic detected: %v", err))
+		// 生产环境隐藏错误详情，仅返回通用消息
+		var errMsg string
+		if gin.Mode() == gin.DebugMode {
+			errMsg = fmt.Sprintf("Panic detected, error: %v. Please submit a issue here: https://github.com/Calcium-Ion/new-api", err)
+		} else {
+			errMsg = "Internal server error"
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{
-				"message": fmt.Sprintf("Panic detected, error: %v. Please submit a issue here: https://github.com/Calcium-Ion/new-api", err),
+				"message": errMsg,
 				"type":    "new_api_panic",
 			},
 		})
@@ -173,6 +181,8 @@ func main() {
 	//server.Use(gzip.Gzip(gzip.DefaultCompression))
 	server.Use(middleware.RequestId())
 	server.Use(middleware.PoweredBy())
+	// 安全响应头：HSTS / CSP / X-Frame-Options / X-Content-Type-Options / Referrer-Policy / Permissions-Policy
+	server.Use(middleware.SecurityHeaders())
 	server.Use(middleware.I18n())
 	middleware.SetUpLogger(server)
 	// Initialize session store
@@ -181,7 +191,7 @@ func main() {
 		Path:     "/",
 		MaxAge:   2592000, // 30 days
 		HttpOnly: true,
-		Secure:   false,
+		Secure:   common.SessionSecure,
 		SameSite: http.SameSiteStrictMode,
 	})
 	server.Use(sessions.Sessions("session", store))

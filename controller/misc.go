@@ -39,6 +39,12 @@ func TestStatus(c *gin.Context) {
 	return
 }
 
+// GetStatus 返回系统状态信息。采用认证感知双层返回策略：
+//   - 未认证用户：仅返回登录/注册页面渲染所需的公开字段（~33 个），收敛攻击面
+//   - 已认证用户：返回完整系统配置（含定价、模块开关、版本号等）
+//
+// OAuth Client ID、Turnstile Site Key、Passkey RP ID 等字段属于协议级公开参数
+//（客户端必须持有才能发起 OAuth 流程 / WebAuthn 注册），因此保留在公共字段中。
 func GetStatus(c *gin.Context) {
 
 	cs := console_setting.GetConsoleSetting()
@@ -48,9 +54,16 @@ func GetStatus(c *gin.Context) {
 	passkeySetting := system_setting.GetPasskeySettings()
 	legalSetting := system_setting.GetLegalSettings()
 
+	// ====== 公共字段（未认证用户可见）======
+	// 包含：品牌 UI、认证方式开关 + 协议级公开凭据、注册控制、法律文档、安装向导
 	data := gin.H{
-		"version":                     common.Version,
-		"start_time":                  common.StartTime,
+		// 品牌 & UI
+		"system_name": common.SystemName,
+		"logo":        common.Logo,
+		"footer_html": common.Footer,
+		"theme":       system_setting.GetThemeSettings().Frontend,
+
+		// 认证方式开关 + 公开凭据（Client ID 等为 OAuth/WebAuthn 协议要求的公开参数）
 		"email_verification":          common.EmailVerificationEnabled,
 		"github_oauth":                common.GitHubOAuthEnabled,
 		"github_client_id":            common.GitHubClientId,
@@ -58,81 +71,45 @@ func GetStatus(c *gin.Context) {
 		"discord_client_id":           system_setting.GetDiscordSettings().ClientId,
 		"linuxdo_oauth":               common.LinuxDOOAuthEnabled,
 		"linuxdo_client_id":           common.LinuxDOClientId,
-		"linuxdo_minimum_trust_level": common.LinuxDOMinimumTrustLevel,
 		"telegram_oauth":              common.TelegramOAuthEnabled,
 		"telegram_bot_name":           common.TelegramBotName,
-		"theme":                       system_setting.GetThemeSettings().Frontend,
-		"system_name":                 common.SystemName,
-		"logo":                        common.Logo,
-		"footer_html":                 common.Footer,
-		"wechat_qrcode":               common.WeChatAccountQRCodeImageURL,
 		"wechat_login":                common.WeChatAuthEnabled,
-		"server_address":              system_setting.ServerAddress,
-		"turnstile_check":             common.TurnstileCheckEnabled,
-		"turnstile_site_key":          common.TurnstileSiteKey,
-		"docs_link":                   operation_setting.GetGeneralSetting().DocsLink,
-		"quota_per_unit":              common.QuotaPerUnit,
-		// 兼容旧前端：保留 display_in_currency，同时提供新的 quota_display_type
-		"display_in_currency":           operation_setting.IsCurrencyDisplay(),
-		"quota_display_type":            operation_setting.GetQuotaDisplayType(),
-		"custom_currency_symbol":        operation_setting.GetGeneralSetting().CustomCurrencySymbol,
-		"custom_currency_exchange_rate": operation_setting.GetGeneralSetting().CustomCurrencyExchangeRate,
-		"enable_batch_update":           common.BatchUpdateEnabled,
-		"enable_drawing":                common.DrawingEnabled,
-		"enable_task":                   common.TaskEnabled,
-		"enable_data_export":            common.DataExportEnabled,
-		"data_export_default_time":      common.DataExportDefaultTime,
-		"default_collapse_sidebar":      common.DefaultCollapseSidebar,
-		"mj_notify_enabled":             setting.MjNotifyEnabled,
-		"chats":                         setting.Chats,
-		"demo_site_enabled":             operation_setting.DemoSiteEnabled,
-		"self_use_mode_enabled":         operation_setting.SelfUseModeEnabled,
-		"register_enabled":              common.RegisterEnabled,
-		"password_register_enabled":     common.PasswordRegisterEnabled,
-		"default_use_auto_group":        setting.DefaultUseAutoGroup,
-
-		"usd_exchange_rate": operation_setting.USDExchangeRate,
-		"price":             operation_setting.Price,
-		"stripe_unit_price": setting.StripeUnitPrice,
-
-		// 面板启用开关
-		"api_info_enabled":      cs.ApiInfoEnabled,
-		"uptime_kuma_enabled":   cs.UptimeKumaEnabled,
-		"announcements_enabled": cs.AnnouncementsEnabled,
-		"faq_enabled":           cs.FAQEnabled,
-
-		// 模块管理配置
-		"HeaderNavModules":    common.OptionMap["HeaderNavModules"],
-		"SidebarModulesAdmin": common.OptionMap["SidebarModulesAdmin"],
-
+		"wechat_qrcode":               common.WeChatAccountQRCodeImageURL,
 		"oidc_enabled":                system_setting.GetOIDCSettings().Enabled,
 		"oidc_client_id":              system_setting.GetOIDCSettings().ClientId,
 		"oidc_authorization_endpoint": system_setting.GetOIDCSettings().AuthorizationEndpoint,
-		"passkey_login":               passkeySetting.Enabled,
-		"passkey_display_name":        passkeySetting.RPDisplayName,
-		"passkey_rp_id":               passkeySetting.RPID,
-		"passkey_origins":             passkeySetting.Origins,
-		"passkey_allow_insecure":      passkeySetting.AllowInsecureOrigin,
-		"passkey_user_verification":   passkeySetting.UserVerification,
-		"passkey_attachment":          passkeySetting.AttachmentPreference,
-		"setup":                       constant.Setup,
-		"user_agreement_enabled":      legalSetting.UserAgreement != "",
-		"privacy_policy_enabled":      legalSetting.PrivacyPolicy != "",
-		"checkin_enabled":             operation_setting.GetCheckinSetting().Enabled,
+
+		// Passkey（WebAuthn 公开配置 — navigator.credentials.create 需要 RP ID）
+		"passkey_login":             passkeySetting.Enabled,
+		"passkey_display_name":      passkeySetting.RPDisplayName,
+		"passkey_rp_id":             passkeySetting.RPID,
+		"passkey_origins":           passkeySetting.Origins,
+		"passkey_allow_insecure":    passkeySetting.AllowInsecureOrigin,
+		"passkey_user_verification": passkeySetting.UserVerification,
+		"passkey_attachment":        passkeySetting.AttachmentPreference,
+
+		// Turnstile（Site Key 为公开参数，Secret Key 始终不暴露）
+		"turnstile_check":    common.TurnstileCheckEnabled,
+		"turnstile_site_key": common.TurnstileSiteKey,
+
+		// 注册控制
+		"register_enabled":          common.RegisterEnabled,
+		"password_register_enabled": common.PasswordRegisterEnabled,
+		"demo_site_enabled":         operation_setting.DemoSiteEnabled,
+		"self_use_mode_enabled":     operation_setting.SelfUseModeEnabled,
+
+		// 法律文档
+		"user_agreement_enabled": legalSetting.UserAgreement != "",
+		"privacy_policy_enabled":  legalSetting.PrivacyPolicy != "",
+
+		// API 地址（前端构建 OAuth 回调 URL 及 API Keys 复制需要）
+		"server_address": system_setting.ServerAddress,
+
+		// 安装向导状态
+		"setup": constant.Setup,
 	}
 
-	// 根据启用状态注入可选内容
-	if cs.ApiInfoEnabled {
-		data["api_info"] = console_setting.GetApiInfo()
-	}
-	if cs.AnnouncementsEnabled {
-		data["announcements"] = console_setting.GetAnnouncements()
-	}
-	if cs.FAQEnabled {
-		data["faq"] = console_setting.GetFAQ()
-	}
-
-	// Add enabled custom OAuth providers
+	// 注入自定义 OAuth 提供商（登录页 OAuth 按钮渲染依赖 client_id 和 authorization_endpoint）
 	customProviders := oauth.GetEnabledCustomProviders()
 	if len(customProviders) > 0 {
 		type CustomOAuthInfo struct {
@@ -158,6 +135,72 @@ func GetStatus(c *gin.Context) {
 			})
 		}
 		data["custom_oauth_providers"] = providersInfo
+	}
+
+	// ====== 未认证用户仅返回公共子集 ======
+	if !middleware.IsAuthenticatedUser(c) {
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"message": "",
+			"data":    data,
+		})
+		return
+	}
+
+	// ====== 已认证用户：追加完整运营数据 ======
+
+	// 版本与运行时信息（攻击者可据此匹配已知漏洞或判断重启周期）
+	data["version"] = common.Version
+	data["start_time"] = common.StartTime
+
+	// LinuxDO 社区信任等级门槛
+	data["linuxdo_minimum_trust_level"] = common.LinuxDOMinimumTrustLevel
+	data["default_use_auto_group"] = setting.DefaultUseAutoGroup
+
+	// 文档链接 & 定价策略（运营情报，无需向匿名用户暴露）
+	data["docs_link"] = operation_setting.GetGeneralSetting().DocsLink
+
+	// 额度与计费配置
+	data["quota_per_unit"] = common.QuotaPerUnit
+	// 兼容旧前端：保留 display_in_currency，同时提供新的 quota_display_type
+	data["display_in_currency"] = operation_setting.IsCurrencyDisplay()
+	data["quota_display_type"] = operation_setting.GetQuotaDisplayType()
+	data["custom_currency_symbol"] = operation_setting.GetGeneralSetting().CustomCurrencySymbol
+	data["custom_currency_exchange_rate"] = operation_setting.GetGeneralSetting().CustomCurrencyExchangeRate
+	data["usd_exchange_rate"] = operation_setting.USDExchangeRate
+	data["price"] = operation_setting.Price
+	data["stripe_unit_price"] = setting.StripeUnitPrice
+
+	// 功能开关（内部模块启停状态）
+	data["enable_batch_update"]      = common.BatchUpdateEnabled
+	data["enable_drawing"]           = common.DrawingEnabled
+	data["enable_task"]              = common.TaskEnabled
+	data["enable_data_export"]       = common.DataExportEnabled
+	data["data_export_default_time"] = common.DataExportDefaultTime
+	data["default_collapse_sidebar"] = common.DefaultCollapseSidebar
+	data["mj_notify_enabled"]        = setting.MjNotifyEnabled
+	data["chats"]                    = setting.Chats
+	data["checkin_enabled"]          = operation_setting.GetCheckinSetting().Enabled
+
+	// Dashboard 面板启用开关
+	data["api_info_enabled"]      = cs.ApiInfoEnabled
+	data["uptime_kuma_enabled"]   = cs.UptimeKumaEnabled
+	data["announcements_enabled"] = cs.AnnouncementsEnabled
+	data["faq_enabled"]           = cs.FAQEnabled
+
+	// 模块管理配置（导航栏/侧边栏结构属于后台配置详情）
+	data["HeaderNavModules"]    = common.OptionMap["HeaderNavModules"]
+	data["SidebarModulesAdmin"] = common.OptionMap["SidebarModulesAdmin"]
+
+	// 根据启用状态注入可选内容（API 信息、公告、FAQ）
+	if cs.ApiInfoEnabled {
+		data["api_info"] = console_setting.GetApiInfo()
+	}
+	if cs.AnnouncementsEnabled {
+		data["announcements"] = console_setting.GetAnnouncements()
+	}
+	if cs.FAQEnabled {
+		data["faq"] = console_setting.GetFAQ()
 	}
 
 	c.JSON(http.StatusOK, gin.H{
