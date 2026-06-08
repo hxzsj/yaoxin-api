@@ -156,6 +156,8 @@ func authHelper(c *gin.Context, minRole int) {
 	c.Next()
 }
 
+// TryUserAuth 尝试从 session 获取用户信息，不拦截请求。
+// 用于需要可选用户身份的场景（如日志记录）。
 func TryUserAuth() func(c *gin.Context) {
 	return func(c *gin.Context) {
 		session := sessions.Default(c)
@@ -165,6 +167,47 @@ func TryUserAuth() func(c *gin.Context) {
 		}
 		c.Next()
 	}
+}
+
+// IsAuthenticatedUser 非侵入式检查当前请求是否已通过认证（session 或 token）。
+// 不拦截请求、不设置上下文、不返回错误信息，仅返回布尔值。
+// 适用于需要在 handler 内部根据认证状态差异化返回数据的场景（如 /api/status）。
+func IsAuthenticatedUser(c *gin.Context) bool {
+	// 1. 检查 session
+	session := sessions.Default(c)
+	if id := session.Get("id"); id != nil {
+		if status, ok := session.Get("status").(int); ok && status == common.UserStatusEnabled {
+			return true
+		}
+	}
+	// 2. 检查 access token（Authorization header）
+	accessToken := c.Request.Header.Get("Authorization")
+	if accessToken != "" {
+		user, err := model.ValidateAccessToken(accessToken)
+		if err == nil && user != nil && user.Username != "" && user.Status == common.UserStatusEnabled {
+			return true
+		}
+	}
+	// 3. 检查 API token（sk- 开头）
+	key := c.Request.Header.Get("Authorization")
+	if key != "" {
+		if strings.HasPrefix(key, "Bearer ") || strings.HasPrefix(key, "bearer ") {
+			key = strings.TrimSpace(key[7:])
+		}
+		key = strings.TrimPrefix(key, "sk-")
+		parts := strings.Split(key, "-")
+		if len(parts) > 0 {
+			key = parts[0]
+		}
+		token, err := model.ValidateUserToken(key)
+		if err == nil && token != nil {
+			userCache, cacheErr := model.GetUserCache(token.UserId)
+			if cacheErr == nil && userCache.Status == common.UserStatusEnabled {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func UserAuth() func(c *gin.Context) {

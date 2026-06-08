@@ -54,6 +54,15 @@ var DefaultCollapseSidebar = false // default value of collapse sidebar
 var SessionSecret = uuid.New().String()
 var CryptoSecret = uuid.New().String()
 
+// AllowedWebOrigins CORS 允许的 Origin 白名单（逗号分隔，通过 ALLOWED_ORIGINS 环境变量加载）
+// 未设置时为 nil，CORS 中间件将回退到 AllowAllOrigins 模式
+var AllowedWebOrigins []string
+
+// SessionSecure 控制 Session Cookie 的 Secure 标志（仅 HTTPS 传输）
+// 通过 SESSION_SECURE 环境变量加载：true/false/auto
+// auto 模式下，GIN_MODE=release 时默认 true，debug 模式默认 false
+var SessionSecure bool
+
 var OptionMap map[string]string
 var OptionMapRWMutex sync.RWMutex
 
