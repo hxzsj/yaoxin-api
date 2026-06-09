@@ -3,7 +3,6 @@ import { fileURLToPath } from 'url'
 import { defineConfig, loadEnv } from '@rsbuild/core'
 import { pluginReact } from '@rsbuild/plugin-react'
 import { tanstackRouter } from '@tanstack/router-plugin/rspack'
-import { pluginSRI } from './plugins/sri'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -12,7 +11,7 @@ export default defineConfig(({ envMode }) => {
   const serverUrl =
     process.env.VITE_REACT_APP_SERVER_URL ||
     env.rawPublicVars.VITE_REACT_APP_SERVER_URL ||
-    'http://localhost:3000'
+    'http://localhost:3003'
 
   const isProd = envMode === 'production'
   const devProxy = Object.fromEntries(
@@ -23,7 +22,10 @@ export default defineConfig(({ envMode }) => {
   ) as Record<string, { target: string; changeOrigin: boolean }>
 
   return {
-    plugins: [pluginReact(), ...(isProd ? [pluginSRI()] : [])],
+    // TODO: SRI 插件暂时禁用 — 与 gin gzip 中间件存在冲突导致白屏
+    // 根因：gin-contrib/gzip 对响应体做了压缩/改写，浏览器计算的 SHA-384 与构建时不一致
+    // 后续方案：将 gzip 压缩下沉到 Nginx/CDN 层（推荐），或升级 gzip 库支持路径排除后重新启用
+    plugins: [pluginReact(), ...(isProd ? [] : [])],
     // Rsbuild 2: replaces deprecated `performance.chunkSplit` (RSPack 2 aligned)
     splitChunks: {
       preset: 'default',
